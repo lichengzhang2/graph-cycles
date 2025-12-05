@@ -59,7 +59,7 @@ python -m http.server 8000
 
 Open your browser and go to:
 ```
-http://localhost:8000/graph_cycles_wasm_en.html
+http://localhost:8000/my_cycles_viewer.html
 ```
 
 # Use the web UI:
