@@ -155,7 +155,18 @@
         <pre id="edges"></pre>
       </div>
       <div class="panel">
-        <h2>Graph visualization</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2>Graph visualization</h2>
+          <label style="font-size:12px;font-weight:400;">
+            Layout:
+            <select id="layoutSelect">
+              <option value="circle">Circle</option>
+              <option value="components">By components</option>
+              <option value="random">Random</option>
+              <option value="spring">Spring (force-directed)</option>
+            </select>
+          </label>
+        </div>
         <svg id="graphSvg"></svg>
       </div>
     </div>
@@ -316,6 +327,118 @@
       return { n, adj };
     }
 
+    // connected components
+    function getComponents(adj, n) {
+      const compId = new Array(n).fill(-1);
+      const comps = [];
+      let cid = 0;
+
+      for (let s = 0; s < n; s++) {
+        if (compId[s] !== -1) continue;
+        const queue = [s];
+        compId[s] = cid;
+        const verts = [];
+
+        while (queue.length) {
+          const u = queue.shift();
+          verts.push(u);
+          for (let v = 0; v < n; v++) {
+            if (adj[u][v] && compId[v] === -1) {
+              compId[v] = cid;
+              queue.push(v);
+            }
+          }
+        }
+        comps.push(verts);
+        cid++;
+      }
+      return { compId, comps };
+    }
+
+    // simple spring (force-directed) layout
+    function springLayout(adj, n, W, H) {
+      const posX = new Array(n);
+      const posY = new Array(n);
+      const dispX = new Array(n);
+      const dispY = new Array(n);
+
+      const pad = Math.min(W, H) * 0.12;
+      const usableW = W - 2 * pad;
+      const usableH = H - 2 * pad;
+
+      for (let i = 0; i < n; i++) {
+        posX[i] = pad + Math.random() * usableW;
+        posY[i] = pad + Math.random() * usableH;
+      }
+
+      const area = usableW * usableH;
+      const k = Math.sqrt(area / Math.max(1, n));
+      const iterations = 80;
+      let t = Math.min(usableW, usableH) / 4;
+      const cooling = 0.90;
+      const EPS = 0.01;
+
+      for (let it = 0; it < iterations; it++) {
+        for (let i = 0; i < n; i++) {
+          dispX[i] = 0;
+          dispY[i] = 0;
+        }
+
+        // repulsive
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            let dx = posX[i] - posX[j];
+            let dy = posY[i] - posY[j];
+            let dist = Math.sqrt(dx * dx + dy * dy) + EPS;
+            let force = (k * k) / dist;
+
+            let fx = (dx / dist) * force;
+            let fy = (dy / dist) * force;
+
+            dispX[i] += fx;  dispY[i] += fy;
+            dispX[j] -= fx;  dispY[j] -= fy;
+          }
+        }
+
+        // attractive (edges)
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            if (!adj[i][j]) continue;
+            let dx = posX[i] - posX[j];
+            let dy = posY[i] - posY[j];
+            let dist = Math.sqrt(dx * dx + dy * dy) + EPS;
+            let force = (dist * dist) / k;
+
+            let fx = (dx / dist) * force;
+            let fy = (dy / dist) * force;
+
+            dispX[i] -= fx;  dispY[i] -= fy;
+            dispX[j] += fx;  dispY[j] += fy;
+          }
+        }
+
+        // move
+        for (let i = 0; i < n; i++) {
+          let dx = dispX[i];
+          let dy = dispY[i];
+          let disp = Math.sqrt(dx * dx + dy * dy) || 1.0;
+          let step = Math.min(disp, t);
+
+          posX[i] += (dx / disp) * step;
+          posY[i] += (dy / disp) * step;
+
+          posX[i] = Math.min(W - pad, Math.max(pad, posX[i]));
+          posY[i] = Math.min(H - pad, Math.max(pad, posY[i]));
+        }
+
+        t *= cooling;
+      }
+
+      const pos = new Array(n);
+      for (let i = 0; i < n; i++) pos[i] = { x: posX[i], y: posY[i] };
+      return pos;
+    }
+
     function buildEdgeList(adj, n) {
       const edges = [];
       for (let i = 0; i < n; i++) {
@@ -326,24 +449,75 @@
       return edges;
     }
 
-    function drawGraph(adj, n) {
+    function drawGraph(adj, n, layout) {
       const svg = document.getElementById("graphSvg");
       const width = svg.clientWidth || 500;
       const height = svg.clientHeight || 380;
       while (svg.firstChild) svg.removeChild(svg.firstChild);
-
       if (n === 0) return;
-      const cx = width / 2;
-      const cy = height / 2;
-      const r = Math.min(width, height) * 0.38;
 
-      const pos = [];
-      for (let i = 0; i < n; i++) {
-        const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-        pos.push({
-          x: cx + r * Math.cos(angle),
-          y: cy + r * Math.sin(angle)
-        });
+      const W = width;
+      const H = height;
+      const minWH = Math.min(W, H);
+      const pos = new Array(n);
+
+      layout = layout || "circle";
+
+      if (layout === "random") {
+        const pad = minWH * 0.12;
+        for (let i = 0; i < n; i++) {
+          pos[i] = {
+            x: pad + Math.random() * (W - 2 * pad),
+            y: pad + Math.random() * (H - 2 * pad)
+          };
+        }
+      } else if (layout === "spring") {
+        const res = springLayout(adj, n, W, H);
+        for (let i = 0; i < n; i++) pos[i] = res[i];
+      } else if (layout === "components") {
+        const { comps } = getComponents(adj, n);
+        const C = comps.length;
+        const bigR = minWH * 0.35;
+        const centerX = W / 2;
+        const centerY = H / 2;
+
+        for (let ci = 0; ci < C; ci++) {
+          let cx, cy;
+          if (C === 1) {
+            cx = centerX;
+            cy = centerY;
+          } else {
+            const ang = (2 * Math.PI * ci) / C - Math.PI / 2;
+            cx = centerX + bigR * Math.cos(ang);
+            cy = centerY + bigR * Math.sin(ang);
+          }
+
+          const verts = comps[ci];
+          const rSmall = (minWH * 0.12) + (minWH * 0.02) * Math.max(0, verts.length - 1);
+          if (verts.length === 1) {
+            pos[verts[0]] = { x: cx, y: cy };
+          } else {
+            for (let k = 0; k < verts.length; k++) {
+              const a = (2 * Math.PI * k) / verts.length - Math.PI / 2;
+              pos[verts[k]] = {
+                x: cx + rSmall * Math.cos(a),
+                y: cy + rSmall * Math.sin(a)
+              };
+            }
+          }
+        }
+      } else {
+        // default: circle
+        const cx = W / 2;
+        const cy = H / 2;
+        const r = minWH * 0.38;
+        for (let i = 0; i < n; i++) {
+          const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+          pos[i] = {
+            x: cx + r * Math.cos(angle),
+            y: cy + r * Math.sin(angle)
+          };
+        }
       }
 
       // edges
@@ -385,7 +559,7 @@
       }
     }
 
-    // --- call C: check if any k-cycle exists ---
+    // call C: existence
     async function checkCycleExists(k) {
       const Module = await cyclesModulePromise;
       const n = currentN;
@@ -412,7 +586,7 @@
       return !!exists;
     }
 
-    // --- call C: enumerate up to m (L) cycles of length k ---
+    // call C: enumerate up to m (L) cycles of length k
     async function enumerateCyclesC(k, L) {
       const Module = await cyclesModulePromise;
       const n = currentN;
@@ -428,8 +602,8 @@
         }
       }
 
-      const perCycle = k + 1;                 // store k+1 vertices (last is start)
-      const outSize  = L * perCycle * 4;      // int32 => 4 bytes
+      const perCycle = k + 1;
+      const outSize  = L * perCycle * 4;
       const outPtr   = Module._malloc(outSize);
 
       const truncPtr = Module._malloc(4);
@@ -492,12 +666,21 @@
           ? edges.map(e => `${e[0]} ${e[1]}`).join("\n")
           : "(no edges)";
 
-        drawGraph(currentAdj, currentN);
+        const layout = document.getElementById("layoutSelect").value;
+        drawGraph(currentAdj, currentN, layout);
       } catch (e) {
         currentN = 0;
         currentAdj = null;
         info.textContent = "Parse error: " + e.message;
+        console.error(e);
       }
+    });
+
+    // Layout change: redraw current graph
+    document.getElementById("layoutSelect").addEventListener("change", () => {
+      if (!currentAdj || currentN <= 0) return;
+      const layout = document.getElementById("layoutSelect").value;
+      drawGraph(currentAdj, currentN, layout);
     });
 
     // Cycle button
