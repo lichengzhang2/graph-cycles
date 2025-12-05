@@ -1,12 +1,14 @@
-Description
+See https://lichengzhang2.github.io/graph-cycles/my_cycles_viewer.html
+
+# Description
 This web-based tool parses undirected graphs given either as a graph6 string or as an edge list, visualizes the graph, and uses a C/WebAssembly backend to search for simple cycles of a fixed length k.
 Users can:
 
-Check whether any simple cycle of length k exists,
+- Check whether any simple cycle of length k exists,
 
-Enumerate all simple cycles of length k (up to a safe limit), or
+- Enumerate all simple cycles of length k (up to a safe limit), or
 
-Enumerate the first m simple cycles of length k.
+- Enumerate the first m simple cycles of length k.
 
 The heavy combinatorial search is implemented in C and compiled to WebAssembly for performance, while the browser UI handles input, visualization, and interaction.
 
@@ -14,11 +16,11 @@ The heavy combinatorial search is implemented in C and compiled to WebAssembly f
 
 
 
-Files
+# Files
 
 Place these files in the same directory:
 
-graph_cycles_wasm_en.html – the main web UI (English)
+my_cycles_viewer.html – the main web UI (English)
 
 cycles_lib.js – Emscripten-generated JavaScript
 
@@ -26,7 +28,7 @@ cycles_lib.wasm – WebAssembly module
 
 cycles_lib.c – (optional) C source for rebuilding the core
 
-Requirements
+# Requirements
 
 To run the tool (no compilation needed):
 
@@ -40,33 +42,34 @@ Emscripten SDK (emcc) properly installed and activated.
 
 Running the Tool (no compilation)
 
-Put graph_cycles_wasm_en.html, cycles_lib.js, and cycles_lib.wasm in the same folder, e.g.:
+Put my_cycles_viewer.html, cycles_lib.js, and cycles_lib.wasm in the same folder, e.g.:
 
+```
 C:\graph-cycles\
-    graph_cycles_wasm_en.html
+    my_cycles_viewer.html
     cycles_lib.js
     cycles_lib.wasm
-
+```
 
 Open a terminal / command prompt in that folder and start a local server:
-
+```
 cd C:\graph-cycles
 python -m http.server 8000
-
+```
 
 Open your browser and go to:
-
+```
 http://localhost:8000/graph_cycles_wasm_en.html
-
+```
 
 Use the web UI:
 
 Choose input type: graph6 or Edge list.
 
 For graph6, you can try this example:
-
+```
 Q?_GWL?KG@C@_Ag?g?a?@CO?O?W
-
+```
 
 Click “Parse graph / show edges / draw” to:
 
@@ -94,17 +97,18 @@ If you want to modify the C code (cycles_lib.c) and rebuild:
 
 Make sure Emscripten is activated (in that terminal):
 
+```
 emcc --version
-
+```
 
 From the directory containing cycles_lib.c, run:
-
+```
 emcc cycles_lib.c -O3 \
   -s EXPORTED_FUNCTIONS='["_cycles_exists","_cycles_enumerate","_malloc","_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAP8","HEAPU8","HEAP32","HEAPU32"]' \
   -s MODULARIZE=1 -s EXPORT_NAME="CyclesModule" \
   -o cycles_lib.js
-
+```
 
 This will regenerate cycles_lib.js and cycles_lib.wasm.
 Then restart python -m http.server 8000 and reload the page.
