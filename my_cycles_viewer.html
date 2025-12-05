@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Graph parser + C/WASM fixed-length k-cycles</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 16px 20px 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 10px;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 80px;
+      font-family: monospace;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    input[type="number"] {
+      width: 120px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 999px;
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    .section-title {
+      font-size: 16px;
+      margin-top: 18px;
+      font-weight: 700;
+    }
+    #info, #cycleInfo {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #444;
+    }
+    .flex {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .panel {
+      flex: 1 1 350px;
+      background: #fafafa;
+      border-radius: 10px;
+      border: 1px solid #eee;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    .panel h2 {
+      font-size: 14px;
+      margin: 0 0 6px;
+    }
+    pre {
+      font-family: monospace;
+      font-size: 12px;
+      margin: 0;
+      white-space: pre-wrap;
+      max-height: 320px;
+      overflow: auto;
+    }
+    #graphSvg {
+      width: 100%;
+      height: 380px;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid #ddd;
+    }
+    .radio-group {
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    .radio-group label {
+      font-weight: 400;
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Graph parser + C/WASM enumeration of simple cycles of length k</h1>
+    <p style="font-size: 13px; color: #666;">
+      Input a <code>graph6</code> string or an undirected edge list. The page parses and draws the graph,
+      then uses a C-compiled WebAssembly core to enumerate simple cycles of fixed length <b>k</b>.
+    </p>
+
+    <!-- Input type -->
+    <div class="section-title">1. Choose input type</div>
+    <div class="radio-group">
+      <label>
+        <input type="radio" name="inputType" value="graph6" checked />
+        graph6 string
+      </label>
+      <label>
+        <input type="radio" name="inputType" value="adjlist" />
+        Edge list (one "u v" per line)
+      </label>
+    </div>
+
+    <!-- graph6 input -->
+    <div id="graph6Block">
+      <label for="g6Input">graph6 string:</label>
+      <textarea id="g6Input" placeholder="Example: Q?_GWL?KG@C@_Ag?g?a?@CO?O?W"></textarea>
+    </div>
+
+    <!-- adjacency list input -->
+    <div id="adjBlock" style="display:none;">
+      <label for="adjInput">Edge list (undirected graph):</label>
+      <textarea id="adjInput" placeholder="Each line: u v (0-based vertex index)&#10;Example:&#10;0 1&#10;0 2&#10;1 2&#10;2 3"></textarea>
+    </div>
+
+    <button id="parseBtn">Parse graph / show edges / draw</button>
+    <div id="info"></div>
+
+    <div class="flex">
+      <div class="panel">
+        <h2>Edge list (u v)</h2>
+        <pre id="edges"></pre>
+      </div>
+      <div class="panel">
+        <h2>Graph visualization</h2>
+        <svg id="graphSvg"></svg>
+      </div>
+    </div>
+
+    <div class="section-title">2. Enumerate cycles of length k using C/WASM</div>
+
+    <label for="kInput">Cycle length k:</label>
+    <input type="number" id="kInput" value="6" min="3" step="1" />
+
+    <div class="radio-group">
+      <label>
+        <input type="radio" name="cycleMode" value="exist" checked />
+        Only check existence of simple cycles of length k
+      </label>
+      <label>
+        <input type="radio" name="cycleMode" value="all" />
+        Enumerate all cycles of length k (with a safety upper bound)
+      </label>
+      <label>
+        <input type="radio" name="cycleMode" value="firstL" />
+        Enumerate only the first m cycles of length k
+      </label>
+    </div>
+
+    <label for="lInput">m (only used in "first m cycles" mode):</label>
+    <input type="number" id="lInput" value="10" min="1" step="1" />
+
+    <br/>
+    <button id="cycleBtn">Run cycle computation</button>
+    <div id="cycleInfo"></div>
+
+    <div class="panel" style="margin-top:10px;">
+      <h2>Simple cycles of length k</h2>
+      <pre id="cycles"></pre>
+    </div>
+  </div>
+
+  <!-- Load Emscripten-generated JS/WASM -->
+  <script src="cycles_lib.js"></script>
+  <script>
+    const cyclesModulePromise = CyclesModule();
+
+    let currentAdj = null; // boolean adj[i][j]
+    let currentN = 0;
+
+    // Switch between input types
+    document.querySelectorAll('input[name="inputType"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const type = document.querySelector('input[name="inputType"]:checked').value;
+        document.getElementById('graph6Block').style.display = (type === 'graph6') ? 'block' : 'none';
+        document.getElementById('adjBlock').style.display = (type === 'adjlist') ? 'block' : 'none';
+      });
+    });
+
+    // --- graph6 parser ---
+    function parseGraph6(raw) {
+      let s = raw.trim();
+      if (!s) throw new Error("Empty graph6 input");
+
+      if (s.startsWith(">>graph6<<")) {
+        s = s.slice(10);
+      }
+      s = s.replace(/\s+/g, "");
+
+      const bytes = [];
+      for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i));
+
+      let idx = 0;
+      if (idx >= bytes.length) throw new Error("graph6 string too short");
+
+      let n;
+      if (bytes[idx] !== 126) {
+        n = bytes[idx] - 63;
+        idx++;
+      } else {
+        idx++;
+        if (idx >= bytes.length) throw new Error("Incomplete graph6 n encoding");
+        if (bytes[idx] !== 126) {
+          if (idx + 3 > bytes.length) throw new Error("Incomplete medium graph6 n encoding");
+          let x = 0;
+          for (let k = 0; k < 3; k++) {
+            const c = bytes[idx + k];
+            if (c < 63 || c > 126) throw new Error("Invalid character in n section");
+            x = (x << 6) | ((c - 63) & 0x3f);
+          }
+          n = x;
+          idx += 3;
+        } else {
+          idx++;
+          if (idx + 6 > bytes.length) throw new Error("Incomplete large graph6 n encoding");
+          let x = 0;
+          for (let k = 0; k < 6; k++) {
+            const c = bytes[idx + k];
+            if (c < 63 || c > 126) throw new Error("Invalid character in n section");
+            x = (x << 6) | ((c - 63) & 0x3f);
+          }
+          n = x;
+          idx += 6;
+        }
+      }
+
+      if (!Number.isFinite(n) || n < 0) throw new Error("Invalid vertex count n");
+
+      const nn = n | 0;
+      const adj = Array.from({ length: nn }, () => Array(nn).fill(false));
+
+      const needBits = (nn * (nn - 1)) / 2;
+      let bitIndex = 0;
+      let i = 0, j = 1;
+
+      for (; idx < bytes.length && bitIndex < needBits; idx++) {
+        const c = bytes[idx];
+        if (c < 63 || c > 126) continue;
+        let val = (c - 63) & 0x3f;
+        for (let b = 5; b >= 0 && bitIndex < needBits; b--) {
+          const bit = (val >> b) & 1;
+          if (bit) {
+            adj[i][j] = true;
+            adj[j][i] = true;
+          }
+          bitIndex++;
+          i++;
+          if (i === j) {
+            j++;
+            i = 0;
+          }
+        }
+      }
+      return { n: nn, adj };
+    }
+
+    // --- edge-list parser ---
+    function parseAdjList(raw) {
+      const lines = raw.split(/\r?\n/);
+      const edges = [];
+      let maxV = -1;
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s || s.startsWith('#')) continue;
+        const parts = s.split(/\s+/);
+        if (parts.length < 2) continue;
+        const u = parseInt(parts[0], 10);
+        const v = parseInt(parts[1], 10);
+        if (!Number.isInteger(u) || !Number.isInteger(v) || u < 0 || v < 0) {
+          throw new Error("Invalid edge list format, expected non-negative integers u v");
+        }
+        edges.push([u, v]);
+        maxV = Math.max(maxV, u, v);
+      }
+      if (edges.length === 0) throw new Error("Edge list is empty or contains no valid edges");
+
+      const n = maxV + 1;
+      const adj = Array.from({ length: n }, () => Array(n).fill(false));
+      for (const [u, v] of edges) {
+        adj[u][v] = true;
+        adj[v][u] = true;
+      }
+      return { n, adj };
+    }
+
+    function buildEdgeList(adj, n) {
+      const edges = [];
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (adj[i][j]) edges.push([i, j]);
+        }
+      }
+      return edges;
+    }
+
+    function drawGraph(adj, n) {
+      const svg = document.getElementById("graphSvg");
+      const width = svg.clientWidth || 500;
+      const height = svg.clientHeight || 380;
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      if (n === 0) return;
+      const cx = width / 2;
+      const cy = height / 2;
+      const r = Math.min(width, height) * 0.38;
+
+      const pos = [];
+      for (let i = 0; i < n; i++) {
+        const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+        pos.push({
+          x: cx + r * Math.cos(angle),
+          y: cy + r * Math.sin(angle)
+        });
+      }
+
+      // edges
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (!adj[i][j]) continue;
+          const p1 = pos[i], p2 = pos[j];
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.setAttribute("x1", p1.x);
+          line.setAttribute("y1", p1.y);
+          line.setAttribute("x2", p2.x);
+          line.setAttribute("y2", p2.y);
+          line.setAttribute("stroke", "#999");
+          line.setAttribute("stroke-width", "1.2");
+          svg.appendChild(line);
+        }
+      }
+
+      // vertices
+      for (let i = 0; i < n; i++) {
+        const p = pos[i];
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", p.x);
+        circle.setAttribute("cy", p.y);
+        circle.setAttribute("r", 11);
+        circle.setAttribute("fill", "#2563eb");
+        circle.setAttribute("stroke", "#ffffff");
+        circle.setAttribute("stroke-width", "1.5");
+        svg.appendChild(circle);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", p.x);
+        text.setAttribute("y", p.y + 4);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("font-size", "10");
+        text.setAttribute("fill", "#ffffff");
+        text.textContent = String(i);
+        svg.appendChild(text);
+      }
+    }
+
+    // --- call C: check if any k-cycle exists ---
+    async function checkCycleExists(k) {
+      const Module = await cyclesModulePromise;
+      const n = currentN;
+      const adj = currentAdj;
+      const adjSize = n * n;
+      const adjPtr  = Module._malloc(adjSize);
+      const adjHeap = Module.HEAPU8.subarray(adjPtr, adjPtr + adjSize);
+
+      let idx = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          adjHeap[idx++] = adj[i][j] ? 1 : 0;
+        }
+      }
+
+      const exists = Module.ccall(
+        "cycles_exists",
+        "number",
+        ["number","number","number"],
+        [n, k, adjPtr]
+      );
+
+      Module._free(adjPtr);
+      return !!exists;
+    }
+
+    // --- call C: enumerate up to m (L) cycles of length k ---
+    async function enumerateCyclesC(k, L) {
+      const Module = await cyclesModulePromise;
+      const n = currentN;
+      const adj = currentAdj;
+
+      const adjSize = n * n;
+      const adjPtr  = Module._malloc(adjSize);
+      const adjHeap = Module.HEAPU8.subarray(adjPtr, adjPtr + adjSize);
+      let idx = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          adjHeap[idx++] = adj[i][j] ? 1 : 0;
+        }
+      }
+
+      const perCycle = k + 1;                 // store k+1 vertices (last is start)
+      const outSize  = L * perCycle * 4;      // int32 => 4 bytes
+      const outPtr   = Module._malloc(outSize);
+
+      const truncPtr = Module._malloc(4);
+      Module.HEAP32[truncPtr >> 2] = 0;
+
+      const found = Module.ccall(
+        "cycles_enumerate",
+        "number",
+        ["number","number","number","number","number","number","number"],
+        [n, k, L, adjPtr, outPtr, 1, truncPtr]
+      );
+      const truncated = (Module.HEAP32[truncPtr >> 2] !== 0);
+
+      const outHeap = Module.HEAP32.subarray(outPtr >> 2, (outPtr >> 2) + found * perCycle);
+      const cycles = [];
+      for (let i = 0; i < found; i++) {
+        const base = i * perCycle;
+        const c = [];
+        for (let j = 0; j < perCycle; j++) {
+          c.push(outHeap[base + j]);
+        }
+        cycles.push(c);
+      }
+
+      Module._free(adjPtr);
+      Module._free(outPtr);
+      Module._free(truncPtr);
+
+      return { cycles, truncated };
+    }
+
+    // Parse button
+    document.getElementById("parseBtn").addEventListener("click", () => {
+      const info = document.getElementById("info");
+      const edgesDiv = document.getElementById("edges");
+      const cyclesDiv = document.getElementById("cycles");
+      const cycleInfo = document.getElementById("cycleInfo");
+
+      info.textContent = "";
+      edgesDiv.textContent = "";
+      cyclesDiv.textContent = "";
+      cycleInfo.textContent = "";
+
+      const type = document.querySelector('input[name="inputType"]:checked').value;
+
+      try {
+        let res;
+        if (type === "graph6") {
+          res = parseGraph6(document.getElementById("g6Input").value);
+        } else {
+          res = parseAdjList(document.getElementById("adjInput").value);
+        }
+        currentN = res.n;
+        currentAdj = res.adj;
+
+        info.textContent = `Parsed successfully: n = ${currentN}. You can now run cycle enumeration below.`;
+
+        const edges = buildEdgeList(currentAdj, currentN);
+        edgesDiv.textContent = edges.length
+          ? edges.map(e => `${e[0]} ${e[1]}`).join("\n")
+          : "(no edges)";
+
+        drawGraph(currentAdj, currentN);
+      } catch (e) {
+        currentN = 0;
+        currentAdj = null;
+        info.textContent = "Parse error: " + e.message;
+      }
+    });
+
+    // Cycle button
+    document.getElementById("cycleBtn").addEventListener("click", async () => {
+      const cyclesDiv = document.getElementById("cycles");
+      const cycleInfo = document.getElementById("cycleInfo");
+      cyclesDiv.textContent = "";
+      cycleInfo.textContent = "";
+
+      if (!currentAdj || currentN <= 0) {
+        cycleInfo.textContent = "Please parse the graph first.";
+        return;
+      }
+
+      const k = parseInt(document.getElementById("kInput").value, 10);
+      if (!Number.isInteger(k) || k < 3) {
+        cycleInfo.textContent = "Please set k >= 3 (integer).";
+        return;
+      }
+      if (k > currentN) {
+        cycleInfo.textContent = `Current graph has n = ${currentN}, k = ${k} > n, so no simple cycle of length k can exist.`;
+        return;
+      }
+
+      const mode = document.querySelector('input[name="cycleMode"]:checked').value;
+
+      if (mode === "exist") {
+        const exists = await checkCycleExists(k);
+        if (exists) {
+          const { cycles } = await enumerateCyclesC(k, 1);
+          cycleInfo.textContent = `There exists a simple cycle of length ${k}. One example is shown below.`;
+          cyclesDiv.textContent = cycles[0].join(" ");
+        } else {
+          cycleInfo.textContent = `No simple cycle of length ${k} exists.`;
+        }
+      } else if (mode === "all") {
+        const MAX_SAFE = 5000;
+        const { cycles, truncated } = await enumerateCyclesC(k, MAX_SAFE);
+        const count = cycles.length;
+        let text = `Found ${count} simple cycles of length ${k}`;
+        if (truncated) text += ` (reached safety limit ${MAX_SAFE}, there may be more).`;
+        cycleInfo.textContent = text;
+        cyclesDiv.textContent = cycles
+          .map((c, i) => `${i + 1}: ${c.join(" ")}`)
+          .join("\n");
+      } else {
+        const L = parseInt(document.getElementById("lInput").value, 10);
+        if (!Number.isInteger(L) || L <= 0) {
+          cycleInfo.textContent = "Please set m >= 1 (integer).";
+          return;
+        }
+        const { cycles, truncated } = await enumerateCyclesC(k, L);
+        const count = cycles.length;
+        let text = `Requested first m = ${L} cycles of length ${k}, actually obtained ${count}`;
+        if (truncated) text += " (stopped due to safety limit).";
+        else text += " (all cycles of this length were enumerated).";
+        cycleInfo.textContent = text;
+        cyclesDiv.textContent = cycles
+          .map((c, i) => `${i + 1}: ${c.join(" ")}`)
+          .join("\n");
+      }
+    });
+
+    // Default graph6 for quick testing
+    document.getElementById("g6Input").value = "Q?_GWL?KG@C@_Ag?g?a?@CO?O?W";
+  </script>
+</body>
+</html>
