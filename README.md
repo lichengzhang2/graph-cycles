@@ -62,7 +62,7 @@ Open your browser and go to:
 http://localhost:8000/graph_cycles_wasm_en.html
 ```
 
-Use the web UI:
+# Use the web UI:
 
 Choose input type: graph6 or Edge list.
 
